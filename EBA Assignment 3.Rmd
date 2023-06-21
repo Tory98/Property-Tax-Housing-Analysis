@@ -1,0 +1,190 @@
+---
+title: "Econ 2814 Assignment 3"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+PARID
+PROPERTYHOUSENUM.x
+PROPERTYADDRESS
+PROPERTYZIP.x
+SCHOOLCODE.x
+SALEDATE.x
+SALEPRICE
+SALECODE.x
+STORIES
+YEARBLT
+CONDITION
+TOTALROOMS
+BEDROOMS
+FULLBATHS
+HALFBATHS
+HEATINGCOOLING
+CONDITION
+BSMTGARAGE
+FINISHEDLIVINGAREA
+
+```{r}
+library(tidyverse)
+library(lubridate)
+library(lemon)
+```
+
+
+```{r}
+properties1<-read.csv("/Users/4victoria98/Downloads/Labor Econ/Housing 1.csv")
+properties2<-read.csv("/Users/4victoria98/Downloads/Labor Econ/Housing 2.csv")
+
+head(properties1)
+head(properties2)
+
+houses_merge <- merge(properties1,properties2,by="PARID")
+#head(houses_merge)
+
+wilkinsburg<-houses_merge%>%filter(PROPERTYZIP.x==15221)
+homewood<-houses_merge%>%filter(PROPERTYZIP.x==15208)
+```
+
+```{r}
+homewood.and.wilkinsburg<-houses_merge%>%filter(PROPERTYZIP.x==15208 | PROPERTYZIP.x==15221)
+
+```
+
+```{r}
+homewood.and.wilkinsburg$wilkinsburg<-ifelse(homewood.and.wilkinsburg$MUNIDESC.y=="Wilkinsburg", 1,0)
+```
+
+```{r}
+home_wilk<-homewood.and.wilkinsburg%>%filter(PRICE > 100000)
+home_wilk$log.price<-log(home_wilk$PRICE)
+home_wilk$bathrooms<-home_wilk$FULLBATHS + .5*home_wilk$HALFBATHS
+home_wilk$year_sale<-year(dmy(home_wilk$RECORDDATE.x))-2000
+
+home_wilk<-home_wilk%>%filter(year_sale>=0)
+
+housing.reg<-lm(log.price~STORIES+bathrooms+ BEDROOMS+TOTALROOMS+CONDITION+YEARBLT + year_sale+LOTAREA + wilkinsburg + SCHOOLCODE.x + BSMTGARAGE + FINISHEDLIVINGAREA, home_wilk)
+
+summary(housing.reg)
+```
+
+
+```{r}
+fig1<-streetspecific%>%select(c("log.price", "bathrooms",  "BEDROOMS","TOTALROOMS", "CONDITION",  "year_sale", "LOTAREA",  "wilkinsburg", "FINISHEDLIVINGAREA" ))
+fig1<-fig1[c(2:6, 180:185),]
+
+write_csv(fig1,"/Users/4victoria98/Downloads/fig1.csv")
+
+```
+
+
+```{r}
+streetspecific<-home_wilk%>%filter(PROPERTYADDRESS%in%c("PEEBLES ST","MIFFLIN AVE", "GREEN ST", "PANSY WAY","CHESTNUT ST", "EAST END AVE","S TRENTON AVE", "REBECCA AVE", "FRANKLIN AVE", "WAVERLY ST","BRASHEAR ST", "SOUTH AVE", "GUTHRIE ST"))
+streetspecific
+
+street.reg<-lm(log.price~STORIES+bathrooms+TOTALROOMS+CONDITION+YEARBLT + year_sale+LOTAREA + wilkinsburg  + FINISHEDLIVINGAREA , streetspecific)
+
+summary(street.reg)
+```
+```{r}
+streetspecific<-home_wilk%>%filter(PROPERTYADDRESS%in%c("ROSEDALE ST"))
+streetspecific
+```
+
+
+
+```{r}
+streetspecific<-home_wilk%>%filter(PROPERTYADDRESS%in%c("WOOD ST", "S TRENTON AVE","EAST END AVE","MAPLEWOOD AVE", "SINGER PL", "PITT ST", "ROSEDALE ST", "S BRADDOCK AVE", "MIFFLIN AVE","EDGERTON AVE","SAVANNAH AVE","CELERON ST","UNION ST","SUSQUEHANNA ST","BIDDLE AVE","WEST ST"))
+streetspecific$area_sq<-streetspecific$LOTAREA**2
+
+street.reg<-lm(log.price~bathrooms+ BEDROOMS+TOTALROOMS+CONDITION + year_sale+LOTAREA + area_sq+ wilkinsburg  + FINISHEDLIVINGAREA  + BSMTGARAGE, streetspecific)
+
+summary(street.reg)
+```
+```{r}
+wilk_millage<-14+29.5
+pitt_millage<-8.06+10.25
+
+wilk_millage/pitt_millage
+```
+
+
+```{r}
+streetspecific$PROPERTYADDRESS<-as.factor(streetspecific$PROPERTYADDRESS)
+streetspecific$pred_sale<-exp(predict(street.reg, streetspecific))
+streetspecific$wilkinsburg<-0
+
+flop_county<-streetspecific
+flop_county$wilkinsburg<-1
+
+streetspecific$cf_pred_sale<-exp(predict(street.reg,flop_county))
+streetspecific
+MUNIDESC.y
+```
+
+```{r}
+vectP<-prices.df$`Pitt. Property Tax`
+VectW<-prices.df$`Wilk. Property Tax`
+
+taxP<-rep(0,195)
+taxW<-rep(0,195)
+
+for(i in 1:10){
+  taxP<-taxP + vectP*(1/(1+0.02)**i)
+  taxW<-taxW + VectW*(1/(1+0.02)**i)
+}
+
+prices.df$pitt.tax.infl<-taxP
+prices.df$wilk.tax.infl<-taxW
+prices.df$tax.dif.infl<-prices.df$wilk.tax.infl-prices.df$pitt.tax.infl
+
+colnames(prices.df)<-c("City","Price", "Pitt. Price", "Wilk. Price", "Price Difference", "Pitt. Property Tax", "Wilk. Property Tax", "Tax Difference", "10 Year Tax Dif", "Pitt 10Yr Prop.Tax W/Inf.","Wilk 10Yr Prop.Tax W/Inf.", "10 Yr Tax Dif W/Inf" )
+
+prices.df<-prices.df[,-c(1,2,8)]
+prices.df
+```
+
+```{r}
+mean(prices.df$`Price Difference`-prices.df$tax.dif.infl) 
+mean(prices.df$`Price Difference`-prices.df$`10 Year Fees`) 
+
+```
+
+
+```{r}
+prices.df<-streetspecific[,c(100,103,115,116)]%>%filter(!is.na(pred_sale)&pred_sale!=cf_pred_sale)
+prices.df$price_dif<-prices.df$pred_sale-prices.df$cf_pred_sale
+prices.df$pitt.tax<-prices.df$pred_sale*pitt_millage/1000
+prices.df$wilk.tax<-prices.df$pred_sale*wilk_millage/1000
+prices.df$tax.dif<-prices.df$wilk.tax-prices.df$pitt.ta
+prices.df$tax.dif.10yrs<-prices.df$tax.dif*10
+
+colnames(prices.df)<-c("City","Price", "Pitt. Price", "Wilk. Price", "Price Difference", "Pitt. Property1 Tax", "Wilk. Property Tax", "Tax Difference", "10 Year Fees")
+mean(prices.df$`Price Difference`-prices.df$`10 Year Fees`) 
+mean(prices.df$`10 Year Fees`)
+
+prices.df
+```
+
+```{r}
+library(lemon)
+knit_print.data.frame <- lemon_print
+```
+
+
+```{r, render=lemon_print}
+write_csv(prices.df,"/Users/4victoria98/Downloads/prices_df.csv")
+```
+
+```{r}
+prices.df$`10 Year Fees`<-prices.df$`10 Year Fees`-1000
+ggplot(prices.df, aes(x=`10 Year Fees`, y = `Price Difference`)) + geom_point() + theme_bw()+theme(axis.title.x=element_text(size=15), axis.title.y=element_text(size=16))
+```
+assessment in 2012 assessment, #assessment ratio rate of 1/2, 
+the millage rate
+local total
+
+Ideas for paper: Millage rate * local total, adjusted to 2023 dollars?
